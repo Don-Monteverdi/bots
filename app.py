@@ -1,0 +1,82 @@
+
+from flask import Flask, request, jsonify
+from PyPDF2 import PdfReader
+from datetime import datetime
+import re
+
+app = Flask(__name__)
+
+@app.route("/parse", methods=["POST"])
+def parse_pdf():
+    if 'pdf_file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files['pdf_file']
+    reader = PdfReader(file)
+    text = "\n".join(page.extract_text() for page in reader.pages if page.extract_text())
+    lines = text.splitlines()
+
+    try:
+        start = next(i for i, line in enumerate(lines) if "NYITÓ EGYENLEG" in line) - 2
+        end = next(i for i, line in enumerate(lines) if "ZÁRÓ EGYENLEG" in line) + 2
+        section = lines[start:end+1]
+    except:
+        return jsonify({"error": "Could not locate transaction section"}), 400
+
+    def extract(label):
+        match = re.search(rf'(-?\d+(?:\.\d{{1,3}})?)\s*\n?{label}', text, re.IGNORECASE)
+        return match.group(1) if match else None
+
+    summary = {
+        "Opening Balance": extract("NYITÓ EGYENLEG"),
+        "Closing Balance": extract("ZÁRÓ EGYENLEG"),
+        "Total Credits": extract("JÓVÁÍRÁSOK ÖSSZESEN"),
+        "Total Debits": extract("TERHELÉSEK ÖSSZESEN")
+    }
+
+    results = []
+    i = 0
+    while i < len(section):
+        if re.match(r'\d{2}\.\d{2}\.\d{2}', section[i]):
+            try:
+                date = datetime.strptime(section[i], "%y.%m.%d").strftime("%Y-%m-%d")
+                i += 1
+
+                value_date = None
+                if re.match(r'\d{2}\.\d{2}\.\d{2}', section[i]):
+                    value_date = datetime.strptime(section[i], "%y.%m.%d").strftime("%Y-%m-%d")
+                    i += 1
+
+                amt_str = section[i].strip()
+                if not re.match(r'-?\d+(?:\.\d{1,3})?$', amt_str):
+                    i += 1
+                    continue
+                amt = float(amt_str)
+                i += 1
+
+                desc = []
+                while i < len(section) and not re.match(r'\d{2}\.\d{2}\.\d{2}', section[i]):
+                    if not re.match(r'-?\d+(?:\.\d{1,3})?$', section[i].strip()):
+                        desc.append(section[i].strip())
+                    i += 1
+
+                results.append({
+                    "Date": date,
+                    "ValueDate": value_date,
+                    "Amount": amt_str,
+                    "AmountFloat": amt,
+                    "Description": " ".join(desc),
+                    "Type": "Credit" if amt > 0 else "Debit"
+                })
+            except:
+                i += 1
+        else:
+            i += 1
+
+    return jsonify({
+        "Summary": summary,
+        "Transactions": results
+    })
+
+if __name__ == "__main__":
+    app.run(debug=True)
