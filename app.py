@@ -3,6 +3,7 @@ from flask import Flask, request, jsonify
 from PyPDF2 import PdfReader
 from datetime import datetime
 import re
+import os
 
 app = Flask(__name__)
 
@@ -79,4 +80,5 @@ def parse_pdf():
     })
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=False, host="0.0.0.0", port=port)
