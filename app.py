@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify, render_template_string
-from PyPDF2 import PdfReader
+import pdfplumber
 import re
 import os
 from werkzeug.utils import secure_filename
@@ -71,8 +71,9 @@ def parse_pdf():
     filepath = os.path.join("/tmp", filename)
     file.save(filepath)
 
-    reader = PdfReader(filepath)
-    text = "\n".join(page.extract_text() for page in reader.pages if page.extract_text())
+    with pdfplumber.open(filepath) as pdf:
+        text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
+
     lines = text.splitlines()
 
     def parse_amount(value):
@@ -102,7 +103,6 @@ def parse_pdf():
             if match:
                 total_debits = -parse_amount(match.group(1))
 
-    # Extract balances around the NYITÓ and ZÁRÓ markers
     for i in range(start_index, start_index + 6):
         val = parse_amount(lines[i]) if i < len(lines) else None
         if val is not None:
@@ -114,7 +114,6 @@ def parse_pdf():
             closing_balance = val
             break
 
-    # Extract transactions between start and end
     i = start_index
     while i < end_index:
         line = lines[i].strip()
