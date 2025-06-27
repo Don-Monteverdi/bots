@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template_string
 from PyPDF2 import PdfReader
 import re
 from werkzeug.utils import secure_filename
@@ -6,9 +6,59 @@ import os
 
 app = Flask(__name__)
 
+HTML_PAGE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Bank Statement Parser</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 2em; background: #f7f7f7; }
+        h1 { color: #333; }
+        form { margin-bottom: 2em; }
+        pre { background: #fff; border: 1px solid #ccc; padding: 1em; max-height: 500px; overflow: auto; }
+        button { padding: 0.5em 1em; background: #007bff; color: white; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>📄 Upload Bank Statement (PDF)</h1>
+    <form id="uploadForm" enctype="multipart/form-data">
+        <input type="file" name="file" id="fileInput" accept=".pdf" required />
+        <button type="submit">Parse PDF</button>
+    </form>
+    <pre id="result">Awaiting upload...</pre>
+
+    <script>
+        const form = document.getElementById("uploadForm");
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const fileInput = document.getElementById("fileInput");
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append("file", file);
+
+            const response = await fetch("/parse", {
+                method: "POST",
+                body: formData
+            });
+
+            const result = document.getElementById("result");
+            if (response.ok) {
+                const data = await response.json();
+                result.textContent = JSON.stringify(data, null, 2);
+            } else {
+                result.textContent = "❌ Error parsing file.";
+            }
+        });
+    </script>
+</body>
+</html>
+"""
+
 @app.route("/", methods=["GET"])
 def index():
-    return "📄 Bank Statement Parser is live!"
+    return render_template_string(HTML_PAGE)
 
 @app.route("/parse", methods=["POST"])
 def parse_pdf():
