@@ -5,11 +5,11 @@ from datetime import datetime
 import re
 import os
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static")
 
 @app.route("/", methods=["GET"])
-def index():
-    return "✅ OTP Parser API is running. Use POST /parse to upload a PDF.", 200
+def root():
+    return send_from_directory(app.static_folder, "index.html")
 
 @app.route("/parse", methods=["POST"])
 def parse_pdf():

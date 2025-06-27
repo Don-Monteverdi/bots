@@ -34,7 +34,7 @@
       output.value = "⏳ Uploading...";
 
       try {
-        const res = await fetch("https://otp-parser-x7nl.onrender.com/parse", {
+        const res = await fetch("/parse", {
           method: "POST",
           body: formData
         });
