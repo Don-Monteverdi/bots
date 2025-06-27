@@ -1,4 +1,4 @@
-# 📄 Bank Statement Parser API (Hungarian Erste)
+# 📄 Bank Statement Parser API 
 
 This is a simple Flask-based API that parses Hungarian bank statements (PDFs from Erste) and extracts:
 
