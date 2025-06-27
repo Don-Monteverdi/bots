@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify, render_template_string
-import pdfplumber
+import fitz  # PyMuPDF
 import re
 import os
 from werkzeug.utils import secure_filename
@@ -71,28 +71,24 @@ def parse_pdf():
     filepath = os.path.join("/tmp", filename)
     file.save(filepath)
 
-    with pdfplumber.open(filepath) as pdf:
-        text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
-
+    doc = fitz.open(filepath)
+    text = "\n".join(page.get_text() for page in doc)
     lines = text.splitlines()
 
-    def parse_amount(value):
+    def parse_amount(val):
         try:
-            return float(value.replace(".", "").replace(",", "."))
+            return float(val.replace(".", "").replace(",", "."))
         except:
             return None
 
     transactions = []
     opening_balance = closing_balance = total_credits = total_debits = None
-    found_start, found_end = False, False
-    start_index, end_index = 0, len(lines)
+    start_index = end_index = 0
 
     for i, line in enumerate(lines):
         if "NYITÓ EGYENLEG" in line.upper():
-            found_start = True
             start_index = max(0, i - 2)
         elif "ZÁRÓ EGYENLEG" in line.upper():
-            found_end = True
             end_index = min(len(lines), i + 3)
         elif "JÓVÁÍRÁSOK ÖSSZESEN" in line.upper():
             match = re.search(r"(\d[\d\.]*,\d{2})", line)

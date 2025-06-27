@@ -1,4 +1,4 @@
 Flask
-pdfplumber
+PyMuPDF
 Werkzeug
 Flask-Cors
