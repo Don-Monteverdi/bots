@@ -1,11 +1,13 @@
 
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from PyPDF2 import PdfReader
 from datetime import datetime
 import re
 import os
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all domains
 
 @app.route("/parse", methods=["POST"])
 def parse_pdf():
