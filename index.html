@@ -1,47 +1,50 @@
+
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Bank Statement Parser</title>
-    <style>
-        body { font-family: Arial, sans-serif; padding: 2em; background: #f7f7f7; }
-        h1 { color: #333; }
-        form { margin-bottom: 2em; }
-        pre { background: #fff; border: 1px solid #ccc; padding: 1em; max-height: 500px; overflow: auto; }
-        button { padding: 0.5em 1em; background: #007bff; color: white; border: none; cursor: pointer; }
-    </style>
+  <meta charset="UTF-8">
+  <title>OTP PDF Parser Test</title>
+  <style>
+    body { font-family: sans-serif; max-width: 700px; margin: 2rem auto; }
+    textarea { width: 100%; height: 400px; margin-top: 1rem; }
+    input[type="file"] { margin-bottom: 1rem; }
+  </style>
 </head>
 <body>
-    <h1>📄 Upload Bank Statement (PDF)</h1>
-    <form id="uploadForm" enctype="multipart/form-data">
-        <input type="file" name="file" id="fileInput" accept=".pdf" required />
-        <button type="submit">Parse PDF</button>
-    </form>
-    <pre id="result">Awaiting upload...</pre>
+  <h1>OTP PDF Parser Test</h1>
+  <p>Select a PDF statement and upload it to test the API.</p>
 
-    <script>
-        const form = document.getElementById("uploadForm");
-        form.addEventListener("submit", async (e) => {
-            e.preventDefault();
-            const fileInput = document.getElementById("fileInput");
-            const file = fileInput.files[0];
-            if (!file) return;
+  <input type="file" id="fileInput" accept=".pdf" />
+  <button onclick="upload()">📤 Upload</button>
 
-            const formData = new FormData();
-            formData.append("file", file);
+  <textarea id="output" placeholder="Response will appear here..."></textarea>
 
-            const response = await fetch("/parse", {
-                method: "POST",
-                body: formData
-            });
+  <script>
+    async function upload() {
+      const file = document.getElementById('fileInput').files[0];
+      if (!file) {
+        alert("Please select a PDF file first.");
+        return;
+      }
 
-            const result = document.getElementById("result");
-            if (response.ok) {
-                const data = await response.json();
-                result.textContent = JSON.stringify(data, null, 2);
-            } else {
-                result.textContent = "❌ Error parsing file.";
-            }
+      const formData = new FormData();
+      formData.append("pdf_file", file);
+
+      const output = document.getElementById('output');
+      output.value = "⏳ Uploading...";
+
+      try {
+        const res = await fetch("https://otp-parser-x7nl.onrender.com/parse", {
+          method: "POST",
+          body: formData
         });
-    </script>
+
+        const data = await res.json();
+        output.value = JSON.stringify(data, null, 2);
+      } catch (err) {
+        output.value = "❌ Error:\n" + err;
+      }
+    }
+  </script>
 </body>
 </html>
