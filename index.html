@@ -1,77 +1,40 @@
-
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>OTP PDF Parser Test</title>
-  <style>
-    body { font-family: sans-serif; margin: 2rem; }
-    h2 { margin-top: 2rem; }
-    pre { background: #f4f4f4; padding: 1rem; overflow: auto; }
-    .error { color: red; }
-    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-  </style>
+    <title>Bank Statement Parser</title>
 </head>
 <body>
+    <h1>📄 Upload Bank Statement (PDF)</h1>
+    <form id="uploadForm" enctype="multipart/form-data">
+        <input type="file" name="file" id="fileInput" accept=".pdf" required />
+        <button type="submit">Parse PDF</button>
+    </form>
+    <pre id="result" style="background:#eee;padding:1em;"></pre>
 
-<h1>OTP Bank Statement Parser</h1>
+    <script>
+        const form = document.getElementById("uploadForm");
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const fileInput = document.getElementById("fileInput");
+            const file = fileInput.files[0];
+            if (!file) return;
 
-<input type="file" id="pdfInput" accept=".pdf" />
-<button onclick="upload()">Parse PDF</button>
+            const formData = new FormData();
+            formData.append("file", file);
 
-<div id="result"></div>
+            const response = await fetch("/parse", {
+                method: "POST",
+                body: formData
+            });
 
-<script>
-  async function upload() {
-    const input = document.getElementById('pdfInput');
-    const file = input.files[0];
-    const result = document.getElementById('result');
-    result.innerHTML = "⏳ Uploading...";
-
-    if (!file) {
-      result.innerHTML = "<p class='error'>Please select a PDF file.</p>";
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append("pdf_file", file);
-
-    try {
-      const res = await fetch("/parse", {
-        method: "POST",
-        body: formData
-      });
-
-      const data = await res.json();
-
-      if (data.error) {
-        result.innerHTML = `<p class='error'>❌ ${data.error}</p>`;
-        return;
-      }
-
-      let html = `<h2>Summary</h2><pre>${JSON.stringify(data.Summary, null, 2)}</pre>`;
-      html += "<h2>Transactions</h2>";
-      html += "<table><tr><th>Date</th><th>ValueDate</th><th>Amount</th><th>Type</th><th>Description</th></tr>";
-
-      for (const tx of data.Transactions) {
-        html += `<tr>
-          <td>${tx.Date || ""}</td>
-          <td>${tx.ValueDate || ""}</td>
-          <td>${tx.Amount}</td>
-          <td>${tx.Type}</td>
-          <td>${tx.Description}</td>
-        </tr>`;
-      }
-
-      html += "</table>";
-      result.innerHTML = html;
-    } catch (e) {
-      console.error(e);
-      result.innerHTML = `<p class='error'>❌ Failed to connect to server.</p>`;
-    }
-  }
-</script>
-
+            const result = document.getElementById("result");
+            if (response.ok) {
+                const data = await response.json();
+                result.textContent = JSON.stringify(data, null, 2);
+            } else {
+                result.textContent = "Error parsing file.";
+            }
+        });
+    </script>
 </body>
 </html>
