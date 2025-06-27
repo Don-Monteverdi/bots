@@ -1,12 +1,12 @@
 
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from PyPDF2 import PdfReader
 from datetime import datetime
 import re
 import os
 
-app = Flask(__name__, template_folder="templates")
+app = Flask(__name__)
 CORS(app)
 
 @app.route("/parse", methods=["POST"])
@@ -83,7 +83,7 @@ def parse_pdf():
 
 @app.route("/", methods=["GET"])
 def index():
-    return render_template("index.html")
+    return send_file("index.html")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
