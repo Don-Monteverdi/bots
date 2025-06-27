@@ -1,12 +1,13 @@
 from flask import Flask, request, jsonify, render_template_string
-import fitz  # PyMuPDF
+from PyPDF2 import PdfReader
 import re
-import os
 from werkzeug.utils import secure_filename
+import os
 
 app = Flask(__name__)
 
-HTML_PAGE = """<!DOCTYPE html>
+HTML_PAGE = """
+<!DOCTYPE html>
 <html>
 <head>
     <title>Bank Statement Parser</title>
@@ -52,7 +53,8 @@ HTML_PAGE = """<!DOCTYPE html>
         });
     </script>
 </body>
-</html>"""
+</html>
+"""
 
 @app.route("/", methods=["GET"])
 def index():
@@ -71,82 +73,62 @@ def parse_pdf():
     filepath = os.path.join("/tmp", filename)
     file.save(filepath)
 
-    doc = fitz.open(filepath)
-    text = "\n".join(page.get_text() for page in doc)
-    lines = text.splitlines()
+    reader = PdfReader(filepath)
+    full_text = "\n".join(page.extract_text() for page in reader.pages if page.extract_text())
+    lines = full_text.splitlines()
 
-    def parse_amount(val):
-        try:
-            return float(val.replace(".", "").replace(",", "."))
-        except:
-            return None
-
-    transactions = []
-    opening_balance = closing_balance = total_credits = total_debits = None
-    start_index = end_index = 0
-
+    # Balances
+    opening_balance = closing_balance = None
     for i, line in enumerate(lines):
-        if "NYITÓ EGYENLEG" in line.upper():
-            start_index = max(0, i - 2)
-        elif "ZÁRÓ EGYENLEG" in line.upper():
-            end_index = min(len(lines), i + 3)
-        elif "JÓVÁÍRÁSOK ÖSSZESEN" in line.upper():
-            match = re.search(r"(\d[\d\.]*,\d{2})", line)
-            if match:
-                total_credits = parse_amount(match.group(1))
-        elif "TERHELÉSEK ÖSSZESEN" in line.upper():
-            match = re.search(r"(\d[\d\.]*,\d{2})", line)
-            if match:
-                total_debits = -parse_amount(match.group(1))
+        if "NYITÓ EGYENLEG" in line.upper() and i >= 1:
+            try:
+                opening_balance = float(lines[i - 1].replace(".", "").replace(",", "."))
+            except:
+                pass
+        if "ZÁRÓ EGYENLEG" in line.upper() and i >= 1:
+            try:
+                closing_balance = float(lines[i - 1].replace(".", "").replace(",", "."))
+            except:
+                pass
 
-    for i in range(start_index, start_index + 6):
-        val = parse_amount(lines[i]) if i < len(lines) else None
-        if val is not None:
-            opening_balance = val
-            break
-    for i in range(end_index - 3, end_index + 3):
-        val = parse_amount(lines[i]) if i < len(lines) else None
-        if val is not None:
-            closing_balance = val
-            break
+    # Totals
+    total_credits = total_debits = None
+    for line in lines:
+        if "JÓVÁÍRÁSOK ÖSSZESEN" in line and "TERHELÉSEK ÖSSZESEN" in line:
+            credit_match = re.search(r"JÓVÁÍRÁSOK ÖSSZESEN:\s*(-?\d[\d\.]+)", line)
+            debit_match = re.search(r"TERHELÉSEK ÖSSZESEN:\s*(-?\d[\d\.]+)", line)
+            if credit_match:
+                total_credits = float(credit_match.group(1).replace(".", ""))
+            if debit_match:
+                total_debits = float(debit_match.group(1).replace(".", ""))
 
-    i = start_index
-    while i < end_index:
-        line = lines[i].strip()
-        if re.match(r"\d{2}\.\d{2}\.\d{2}", line):
-            date = line
-            value_date = None
-            amount = None
-            description = []
-            j = i + 1
-
-            while j < len(lines):
-                next_line = lines[j].strip()
-                if re.match(r"\d{2}\.\d{2}\.\d{2}", next_line) and value_date is None:
-                    value_date = next_line
-                elif amount is None:
-                    amt = parse_amount(next_line)
-                    if amt is not None:
-                        amount = amt
-                    else:
-                        description.append(next_line)
-                else:
-                    if re.match(r"\d{2}\.\d{2}\.\d{2}", next_line):
-                        break
-                    description.append(next_line)
-                j += 1
-
-            if amount is not None:
+    # Transactions
+    transactions = []
+    i = 0
+    while i < len(lines) - 3:
+        date_line = lines[i].strip()
+        value_date_line = lines[i + 2].strip()
+        amount_line = lines[i + 3].strip()
+        if re.match(r"\d{2}\.\d{2}\.\d{2}", date_line) and re.match(r"\d{2}\.\d{2}\.\d{2}", value_date_line):
+            try:
+                amount = float(amount_line.replace(".", "").replace(",", "."))
+                type_ = "Credit" if amount > 0 else "Debit"
+                description_lines = []
+                j = i + 4
+                while j < len(lines) and not re.match(r"\d{2}\.\d{2}\.\d{2}", lines[j].strip()):
+                    description_lines.append(lines[j].strip())
+                    j += 1
                 transactions.append({
-                    "Date": date,
-                    "ValueDate": value_date,
+                    "Date": date_line,
+                    "ValueDate": value_date_line,
                     "Amount": amount,
-                    "Type": "Credit" if amount > 0 else "Debit",
-                    "Description": " ".join(description)
+                    "Type": type_,
+                    "Description": " ".join(description_lines)
                 })
-            i = j
-        else:
-            i += 1
+                i = j - 1
+            except:
+                pass
+        i += 1
 
     return jsonify({
         "Opening Balance": opening_balance,

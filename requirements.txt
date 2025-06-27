@@ -1,4 +1,3 @@
 Flask
-PyMuPDF
+PyPDF2
 Werkzeug
-Flask-Cors
