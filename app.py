@@ -83,29 +83,40 @@ def parse_pdf():
 
     transactions = []
     opening_balance = closing_balance = total_credits = total_debits = None
+    found_start, found_end = False, False
+    start_index, end_index = 0, len(lines)
 
     for i, line in enumerate(lines):
         if "NYITÓ EGYENLEG" in line.upper():
-            for j in range(i - 2, i + 2):
-                val = parse_amount(lines[j]) if j >= 0 and j < len(lines) else None
-                if val is not None:
-                    opening_balance = val
-        if "ZÁRÓ EGYENLEG" in line.upper():
-            for j in range(i - 2, i + 2):
-                val = parse_amount(lines[j]) if j >= 0 and j < len(lines) else None
-                if val is not None:
-                    closing_balance = val
-        if "JÓVÁÍRÁSOK ÖSSZESEN" in line.upper():
+            found_start = True
+            start_index = max(0, i - 2)
+        elif "ZÁRÓ EGYENLEG" in line.upper():
+            found_end = True
+            end_index = min(len(lines), i + 3)
+        elif "JÓVÁÍRÁSOK ÖSSZESEN" in line.upper():
             match = re.search(r"(\d[\d\.]*,\d{2})", line)
             if match:
                 total_credits = parse_amount(match.group(1))
-        if "TERHELÉSEK ÖSSZESEN" in line.upper():
+        elif "TERHELÉSEK ÖSSZESEN" in line.upper():
             match = re.search(r"(\d[\d\.]*,\d{2})", line)
             if match:
                 total_debits = -parse_amount(match.group(1))
 
-    i = 0
-    while i < len(lines):
+    # Extract balances around the NYITÓ and ZÁRÓ markers
+    for i in range(start_index, start_index + 6):
+        val = parse_amount(lines[i]) if i < len(lines) else None
+        if val is not None:
+            opening_balance = val
+            break
+    for i in range(end_index - 3, end_index + 3):
+        val = parse_amount(lines[i]) if i < len(lines) else None
+        if val is not None:
+            closing_balance = val
+            break
+
+    # Extract transactions between start and end
+    i = start_index
+    while i < end_index:
         line = lines[i].strip()
         if re.match(r"\d{2}\.\d{2}\.\d{2}", line):
             date = line
