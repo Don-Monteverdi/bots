@@ -27,11 +27,12 @@ def parse_pdf():
         return jsonify({"error": "Could not locate transaction section"}), 400
 
     def extract(label):
-        pattern = rf"{label}\s*-?(\d{{1,3}}(?:\.\d{{3}})*,\d{{3}}|-?\d+(?:\.\d{{3}})?)"
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            raw = match.group(1).replace(".", "").replace(",", ".")
-            return raw
+        for line in lines:
+            if label in line:
+                parts = line.split()
+                for part in parts:
+                    if re.match(r'-?\d{1,3}(\.\d{3})*(,\d{3})?', part) or re.match(r'-?\d+(\.\d{3})?', part):
+                        return part.replace(".", "").replace(",", ".")
         return None
 
     summary = {
@@ -44,10 +45,9 @@ def parse_pdf():
     results = []
     i = 0
     while i < len(section):
-        line = section[i]
-        if re.match(r'\d{2}\.\d{2}\.\d{2}', line):
+        if re.match(r'\d{2}\.\d{2}\.\d{2}', section[i]):
             try:
-                date = datetime.strptime(line.strip(), "%y.%m.%d").strftime("%Y-%m-%d")
+                date = datetime.strptime(section[i].strip(), "%y.%m.%d").strftime("%Y-%m-%d")
                 i += 1
 
                 value_date = None
@@ -55,12 +55,11 @@ def parse_pdf():
                     value_date = datetime.strptime(section[i].strip(), "%y.%m.%d").strftime("%Y-%m-%d")
                     i += 1
 
-                amt_str = section[i].strip()
-                amt_clean = amt_str.replace(".", "").replace(",", ".")
-                if not re.match(r'-?\d+(\.\d{1,3})?$', amt_clean):
+                amt_str = section[i].strip().replace(".", "").replace(",", ".")
+                if not re.match(r'-?\d+(\.\d{1,3})?$', amt_str):
                     i += 1
                     continue
-                amt = float(amt_clean)
+                amt = float(amt_str)
                 i += 1
 
                 desc = []
@@ -72,7 +71,7 @@ def parse_pdf():
                 results.append({
                     "Date": date,
                     "ValueDate": value_date,
-                    "Amount": amt_clean,
+                    "Amount": amt_str,
                     "AmountFloat": amt,
                     "Description": " ".join(desc),
                     "Type": "Credit" if amt > 0 else "Debit"
