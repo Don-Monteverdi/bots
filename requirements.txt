@@ -1,3 +1,2 @@
-Flask
-PyPDF2
-Werkzeug
+Flask==2.3.3
+PyPDF2==3.0.1
