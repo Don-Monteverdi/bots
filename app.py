@@ -27,8 +27,12 @@ def parse_pdf():
         return jsonify({"error": "Could not locate transaction section"}), 400
 
     def extract(label):
-        match = re.search(rf'(-?\d+(?:\.\d{{1,3}})?)\s*\n?{label}', text, re.IGNORECASE)
-        return match.group(1) if match else None
+        pattern = rf"{label}\s*-?(\d{{1,3}}(?:\.\d{{3}})*,\d{{3}}|-?\d+(?:\.\d{{3}})?)"
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            raw = match.group(1).replace(".", "").replace(",", ".")
+            return raw
+        return None
 
     summary = {
         "Opening Balance": extract("NYITÓ EGYENLEG"),
@@ -40,33 +44,35 @@ def parse_pdf():
     results = []
     i = 0
     while i < len(section):
-        if re.match(r'\d{2}\.\d{2}\.\d{2}', section[i]):
+        line = section[i]
+        if re.match(r'\d{2}\.\d{2}\.\d{2}', line):
             try:
-                date = datetime.strptime(section[i], "%y.%m.%d").strftime("%Y-%m-%d")
+                date = datetime.strptime(line.strip(), "%y.%m.%d").strftime("%Y-%m-%d")
                 i += 1
 
                 value_date = None
-                if re.match(r'\d{2}\.\d{2}\.\d{2}', section[i]):
-                    value_date = datetime.strptime(section[i], "%y.%m.%d").strftime("%Y-%m-%d")
+                if i < len(section) and re.match(r'\d{2}\.\d{2}\.\d{2}', section[i]):
+                    value_date = datetime.strptime(section[i].strip(), "%y.%m.%d").strftime("%Y-%m-%d")
                     i += 1
 
                 amt_str = section[i].strip()
-                if not re.match(r'-?\d+(?:\.\d{1,3})?$', amt_str):
+                amt_clean = amt_str.replace(".", "").replace(",", ".")
+                if not re.match(r'-?\d+(\.\d{1,3})?$', amt_clean):
                     i += 1
                     continue
-                amt = float(amt_str)
+                amt = float(amt_clean)
                 i += 1
 
                 desc = []
                 while i < len(section) and not re.match(r'\d{2}\.\d{2}\.\d{2}', section[i]):
-                    if not re.match(r'-?\d+(?:\.\d{1,3})?$', section[i].strip()):
+                    if not re.match(r'-?\d+(\.\d{1,3})?$', section[i].strip()):
                         desc.append(section[i].strip())
                     i += 1
 
                 results.append({
                     "Date": date,
                     "ValueDate": value_date,
-                    "Amount": amt_str,
+                    "Amount": amt_clean,
                     "AmountFloat": amt,
                     "Description": " ".join(desc),
                     "Type": "Credit" if amt > 0 else "Debit"
