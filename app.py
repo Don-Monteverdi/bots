@@ -1,15 +1,15 @@
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from PyPDF2 import PdfReader
 from datetime import datetime
 import re
 import os
 
-app = Flask(__name__, static_folder="static")
+app = Flask(__name__)
 
 @app.route("/", methods=["GET"])
-def root():
-    return send_from_directory(app.static_folder, "index.html")
+def index():
+    return send_file("index.html")
 
 @app.route("/parse", methods=["POST"])
 def parse_pdf():
