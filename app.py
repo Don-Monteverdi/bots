@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template_string, send_from_directory
+from flask import Flask, request, jsonify, render_template_string
 from PyPDF2 import PdfReader
 import re
 import os
@@ -58,10 +58,6 @@ HTML_PAGE = """<!DOCTYPE html>
 def index():
     return render_template_string(HTML_PAGE)
 
-@app.route("/index.html")
-def serve_index():
-    return send_from_directory(".", "index.html")
-
 @app.route("/parse", methods=["POST"])
 def parse_pdf():
     if "file" not in request.files:
@@ -79,39 +75,35 @@ def parse_pdf():
     text = "\n".join(page.extract_text() for page in reader.pages if page.extract_text())
     lines = text.splitlines()
 
-    # Initialize
-    transactions = []
-    opening_balance = closing_balance = total_credits = total_debits = None
-
-    # Match Hungarian format numbers like 1.234.567,89
-    def parse_huf(amount_str):
+    def parse_amount(value):
         try:
-            return float(amount_str.replace(".", "").replace(",", "."))
+            return float(value.replace(".", "").replace(",", "."))
         except:
             return None
 
-    # Extract balances
+    transactions = []
+    opening_balance = closing_balance = total_credits = total_debits = None
+
     for i, line in enumerate(lines):
         if "NYITÓ EGYENLEG" in line.upper():
-            for j in range(i-3, i+1):
-                val = parse_huf(lines[j])
+            for j in range(i - 2, i + 2):
+                val = parse_amount(lines[j]) if j >= 0 and j < len(lines) else None
                 if val is not None:
                     opening_balance = val
         if "ZÁRÓ EGYENLEG" in line.upper():
-            for j in range(i-3, i+1):
-                val = parse_huf(lines[j])
+            for j in range(i - 2, i + 2):
+                val = parse_amount(lines[j]) if j >= 0 and j < len(lines) else None
                 if val is not None:
                     closing_balance = val
         if "JÓVÁÍRÁSOK ÖSSZESEN" in line.upper():
             match = re.search(r"(\d[\d\.]*,\d{2})", line)
             if match:
-                total_credits = parse_huf(match.group(1))
+                total_credits = parse_amount(match.group(1))
         if "TERHELÉSEK ÖSSZESEN" in line.upper():
             match = re.search(r"(\d[\d\.]*,\d{2})", line)
             if match:
-                total_debits = -parse_huf(match.group(1))
+                total_debits = -parse_amount(match.group(1))
 
-    # Extract transactions
     i = 0
     while i < len(lines):
         line = lines[i].strip()
@@ -122,16 +114,20 @@ def parse_pdf():
             description = []
             j = i + 1
 
-            # Search next 5 lines for value date, amount
-            while j < len(lines) and j < i + 10:
-                if re.match(r"\d{2}\.\d{2}\.\d{2}", lines[j].strip()) and value_date is None:
-                    value_date = lines[j].strip()
+            while j < len(lines):
+                next_line = lines[j].strip()
+                if re.match(r"\d{2}\.\d{2}\.\d{2}", next_line) and value_date is None:
+                    value_date = next_line
                 elif amount is None:
-                    possible = parse_huf(lines[j].strip())
-                    if possible is not None:
-                        amount = possible
+                    amt = parse_amount(next_line)
+                    if amt is not None:
+                        amount = amt
+                    else:
+                        description.append(next_line)
                 else:
-                    description.append(lines[j].strip())
+                    if re.match(r"\d{2}\.\d{2}\.\d{2}", next_line):
+                        break
+                    description.append(next_line)
                 j += 1
 
             if amount is not None:
