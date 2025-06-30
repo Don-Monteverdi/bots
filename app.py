@@ -2,45 +2,64 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import fitz  # PyMuPDF
 import os
+import re
 
-app = Flask(__name__, static_folder='.')
+app = Flask(__name__, static_url_path='', static_folder='.')
 CORS(app)
 
-@app.route('/')
+def parse_transactions(text):
+    lines = text.split("\n")
+    transactions = []
+    total_credits = 0.0
+    total_debits = 0.0
+
+    for line in lines:
+        match = re.search(r"(\d{4}\.\d{2}\.\d{2}).*?([-\d\.]+)", line)
+        if match:
+            date = match.group(1).replace('.', '-')
+            amount_str = match.group(2).replace(".", "").replace(",", ".")
+            amount = float(amount_str)
+            tx_type = "Credit" if amount > 0 else "Debit"
+            if tx_type == "Credit":
+                total_credits += amount
+            else:
+                total_debits += abs(amount)
+            transactions.append({
+                "Date": date,
+                "ValueDate": date,
+                "Amount": f"{amount:.3f}",
+                "Type": tx_type,
+                "Description": line.strip()
+            })
+
+    summary = {
+        "Opening Balance": None,
+        "Closing Balance": None,
+        "Total Credits": f"{total_credits:.3f}",
+        "Total Debits": f"-{total_debits:.3f}"
+    }
+
+    return {"Summary": summary, "Transactions": transactions}
+
+@app.route("/")
 def index():
     return send_from_directory('.', 'index.html')
 
-@app.route('/parse', methods=['POST'])
+@app.route("/parse", methods=["POST"])
 def parse_pdf():
     if 'file' not in request.files:
-        return jsonify({'error': 'No file uploaded'}), 400
+        return jsonify({"error": "No file uploaded"}), 400
 
     file = request.files['file']
-    if not file.filename.endswith('.pdf'):
-        return jsonify({'error': 'Invalid file type'}), 400
+    if file.filename == '' or not file.filename.lower().endswith('.pdf'):
+        return jsonify({"error": "Invalid file type"}), 400
 
-    pdf = fitz.open(stream=file.read(), filetype='pdf')
-    text = ''
-    for page in pdf:
+    doc = fitz.open(stream=file.read(), filetype="pdf")
+    text = ""
+    for page in doc:
         text += page.get_text()
+    parsed_data = parse_transactions(text)
+    return jsonify(parsed_data)
 
-    return jsonify({
-        "Summary": {
-            "Opening Balance": "1000.00",
-            "Closing Balance": "1500.00",
-            "Total Credits": "700.00",
-            "Total Debits": "200.00"
-        },
-        "Transactions": [
-            {
-                "Date": "2025-03-01",
-                "ValueDate": "2025-03-01",
-                "Description": "Sample Transaction 1",
-                "Amount": "100.00",
-                "Type": "Credit"
-            }
-        ]
-    })
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000, debug=True)
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
