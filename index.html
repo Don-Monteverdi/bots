@@ -1,40 +1,32 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>OTP Bank Statement Parser</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>OTP Bank Statement Parser</title>
 </head>
 <body>
-    <h1>OTP Bank Statement Parser</h1>
-    <p>Select a PDF bank statement and upload it. The parsed result will be shown below.</p>
-    <input type="file" id="pdfFile" accept=".pdf">
-    <button onclick="uploadAndParse()">Upload & Parse</button>
-    <pre id="output"></pre>
-    <script>
-        function uploadAndParse() {
-            const fileInput = document.getElementById('pdfFile');
-            const output = document.getElementById('output');
-            const file = fileInput.files[0];
-            if (!file || !file.name.endsWith('.pdf')) {
-                output.textContent = 'Please upload a valid PDF file.';
-                return;
-            }
+  <h1>OTP Bank Statement Parser</h1>
+  <input type="file" id="fileInput" />
+  <button onclick="uploadPDF()">Upload & Parse</button>
+  <pre id="output"></pre>
 
-            const formData = new FormData();
-            formData.append('file', file);
+  <script>
+    async function uploadPDF() {
+      const fileInput = document.getElementById('fileInput');
+      const file = fileInput.files[0];
+      const formData = new FormData();
+      formData.append('file', file);
 
-            fetch('/parse', {
-                method: 'POST',
-                body: formData
-            })
-            .then(res => res.json())
-            .then(data => {
-                output.textContent = JSON.stringify(data, null, 2);
-            })
-            .catch(err => {
-                output.textContent = 'Error: ' + err;
-            });
-        }
-    </script>
+      const response = await fetch('/parse', {
+        method: 'POST',
+        body: formData
+      });
+
+      const result = await response.json();
+      document.getElementById('output').textContent = JSON.stringify(result, null, 2);
+    }
+  </script>
 </body>
 </html>

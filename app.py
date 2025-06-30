@@ -1,65 +1,88 @@
-from flask import Flask, request, jsonify, send_from_directory
+
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import fitz  # PyMuPDF
-import os
 import re
+from datetime import datetime
+import os
 
-app = Flask(__name__, static_url_path='', static_folder='.')
+app = Flask(__name__)
 CORS(app)
 
-def parse_transactions(text):
-    lines = text.split("\n")
+@app.route('/')
+def index():
+    return '✅ OTP Parser API is running. Use POST /parse to upload a PDF.'
+
+@app.route('/parse', methods=['POST'])
+def parse_pdf():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+
+    file = request.files['file']
+    if not file or not file.filename.lower().endswith('.pdf'):
+        return jsonify({'error': 'Invalid file type'}), 400
+
+    text = ''
+    try:
+        with fitz.open(stream=file.read(), filetype="pdf") as doc:
+            for page in doc:
+                text += page.get_text()
+    except Exception as e:
+        return jsonify({'error': f'Failed to read PDF: {str(e)}'}), 500
+
+    lines = text.split('
+')
     transactions = []
-    total_credits = 0.0
-    total_debits = 0.0
-
-    for line in lines:
-        match = re.search(r"(\d{4}\.\d{2}\.\d{2}).*?([-\d\.]+)", line)
-        if match:
-            date = match.group(1).replace('.', '-')
-            amount_str = match.group(2).replace(".", "").replace(",", ".")
-            amount = float(amount_str)
-            tx_type = "Credit" if amount > 0 else "Debit"
-            if tx_type == "Credit":
-                total_credits += amount
-            else:
-                total_debits += abs(amount)
-            transactions.append({
-                "Date": date,
-                "ValueDate": date,
-                "Amount": f"{amount:.3f}",
-                "Type": tx_type,
-                "Description": line.strip()
-            })
-
     summary = {
         "Opening Balance": None,
         "Closing Balance": None,
-        "Total Credits": f"{total_credits:.3f}",
-        "Total Debits": f"-{total_debits:.3f}"
+        "Total Credits": None,
+        "Total Debits": None
     }
 
-    return {"Summary": summary, "Transactions": transactions}
+    for line in lines:
+        if "NYITÓ EGYENLEG" in line:
+            match = re.search(r"-?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{3})?", line)
+            if match:
+                summary["Opening Balance"] = match.group(0).replace(",", ".")
+        elif "ZÁRÓ EGYENLEG" in line:
+            match = re.search(r"-?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{3})?", line)
+            if match:
+                summary["Closing Balance"] = match.group(0).replace(",", ".")
+        elif "JÓVÁÍRÁSOK ÖSSZESEN" in line:
+            match = re.search(r"-?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{3})?", line)
+            if match:
+                summary["Total Credits"] = match.group(0).replace(",", ".")
+        elif "TERHELÉSEK ÖSSZESEN" in line:
+            match = re.search(r"-?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{3})?", line)
+            if match:
+                summary["Total Debits"] = match.group(0).replace(",", ".")
 
-@app.route("/")
-def index():
-    return send_from_directory('.', 'index.html')
+    transaction_regex = re.compile(
+        r"(\d{4}\.\d{2}\.\d{2}).*?(\d{4}\.\d{2}\.\d{2})?[^\d-]*?([-−]?[\d.]+).*?(?=\d{4}\.\d{2}\.\d{2}|$)",
+        re.DOTALL
+    )
+    matches = transaction_regex.finditer(text)
 
-@app.route("/parse", methods=["POST"])
-def parse_pdf():
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
+    for match in matches:
+        date = match.group(1).replace('.', '-')
+        value_date = match.group(2).replace('.', '-') if match.group(2) else date
+        amount = match.group(3).replace(",", ".").replace("−", "-")
+        type_ = "Credit" if not amount.startswith("-") else "Debit"
+        desc_start = match.end()
+        desc_end = text.find(match.group(1), desc_start)
+        description = text[desc_start:desc_end].strip() if desc_end != -1 else text[desc_start:].strip()
 
-    file = request.files['file']
-    if file.filename == '' or not file.filename.lower().endswith('.pdf'):
-        return jsonify({"error": "Invalid file type"}), 400
+        transactions.append({
+            "Date": date,
+            "ValueDate": value_date,
+            "Amount": amount,
+            "Type": type_,
+            "Description": description
+        })
 
-    doc = fitz.open(stream=file.read(), filetype="pdf")
-    text = ""
-    for page in doc:
-        text += page.get_text()
-    parsed_data = parse_transactions(text)
-    return jsonify(parsed_data)
+    return jsonify({"Summary": summary, "Transactions": transactions})
 
-if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
