@@ -1,31 +1,38 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>OTP Bank Statement Parser</title>
 </head>
 <body>
   <h1>OTP Bank Statement Parser</h1>
-  <input type="file" id="fileInput" />
+  <input type="file" id="pdfFile" accept=".pdf" />
   <button onclick="uploadPDF()">Upload & Parse</button>
   <pre id="output"></pre>
 
   <script>
     async function uploadPDF() {
-      const fileInput = document.getElementById('fileInput');
+      const fileInput = document.getElementById('pdfFile');
+      const output = document.getElementById('output');
       const file = fileInput.files[0];
+      if (!file) {
+        alert('Please select a file.');
+        return;
+      }
+
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('/parse', {
-        method: 'POST',
-        body: formData
-      });
-
-      const result = await response.json();
-      document.getElementById('output').textContent = JSON.stringify(result, null, 2);
+      try {
+        const res = await fetch('/parse', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        output.textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        output.textContent = 'Error: ' + err;
+      }
     }
   </script>
 </body>
