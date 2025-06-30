@@ -1,73 +1,91 @@
 
-from flask import Flask, request, jsonify, send_file
-from PyPDF2 import PdfReader
+from flask import Flask, request, jsonify
+import fitz  # PyMuPDF
 import re
 
 app = Flask(__name__)
 
-@app.route("/", methods=["GET"])
-def index():
-    return send_file("index.html")
+def extract_text_from_pdf(file_stream):
+    doc = fitz.open(stream=file_stream.read(), filetype="pdf")
+    text = ""
+    for page in doc:
+        text += page.get_text()
+    return text
 
-@app.route("/parse", methods=["POST"])
-def parse_pdf():
-    if 'pdf_file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
+def parse_otp_statement(text):
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    section = []
+    started = False
 
-    file = request.files['pdf_file']
-    reader = PdfReader(file)
-    text = "\n".join(page.extract_text() for page in reader.pages if page.extract_text())
-    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if "NYITÓ EGYENLEG" in line:
+            section = lines[max(0, i-2):]
+            started = True
+        if started and "ZÁRÓ EGYENLEG" in line:
+            section = section[:section.index(line)+3]
+            break
 
-    # Try to find bounds of the transaction section
-    try:
-        start = next(i for i, line in enumerate(lines) if "NYITÓ EGYENLEG" in line) - 2
-        end = next(i for i, line in enumerate(lines) if "ZÁRÓ EGYENLEG" in line) + 2
-        section = lines[start:end+1]
-    except:
-        section = lines
+    opening = next((l for l in section if "NYITÓ EGYENLEG" in l), None)
+    closing = next((l for l in section if "ZÁRÓ EGYENLEG" in l), None)
+    total_credits = next((l for l in section if "JÓVÁÍRÁSOK ÖSSZESEN" in l), None)
+    total_debits = next((l for l in section if "TERHELÉSEK ÖSSZESEN" in l), None)
 
-    def extract(label):
-        match = re.search(rf"{label}:?\s*(-?\d+[.,]?\d*)", text)
-        return match.group(1).replace(",", ".") if match else None
+    def extract_amount(line):
+        m = re.findall(r"-?\d+[.,]?\d{0,3}", line.replace(" ", ""))
+        return m[-1] if m else None
 
     summary = {
-        "Opening Balance": extract("NYITÓ EGYENLEG"),
-        "Closing Balance": extract("ZÁRÓ EGYENLEG"),
-        "Total Credits": extract("JÓVÁÍRÁSOK ÖSSZESEN"),
-        "Total Debits": extract("TERHELÉSEK ÖSSZESEN")
+        "Opening Balance": extract_amount(opening),
+        "Closing Balance": extract_amount(closing),
+        "Total Credits": extract_amount(total_credits),
+        "Total Debits": extract_amount(total_debits)
     }
 
+    # Extract transactions from lines
     transactions = []
+    clean_lines = [l.strip() for l in section if l.strip()]
     i = 0
-    while i < len(section):
-        line = section[i]
-        if re.match(r"\d{2}\.\d{2}\.\d{2}\s+\d{2}\.\d{2}\.\d{2}\s+[-\d]", line):
-            parts = re.split(r"(\d{2}\.\d{2}\.\d{2})\s+(\d{2}\.\d{2}\.\d{2})\s+(-?\d+[.,]?\d*)", line, maxsplit=1)
-            if len(parts) >= 4:
-                date, value_date, amount = parts[1], parts[2], parts[3].replace(",", ".")
-                description_lines = [parts[4].strip()] if len(parts) > 4 else []
+    while i < len(clean_lines) - 2:
+        if re.match(r"\d{2}\.\d{2}\.\d{2}", clean_lines[i]) and            re.match(r"\d{2}\.\d{2}\.\d{2}", clean_lines[i+1]) and            re.match(r"-?\d+([.,]?\d{1,3})?", clean_lines[i+2]):
+
+            date = clean_lines[i]
+            value_date = clean_lines[i+1]
+            amount = clean_lines[i+2]
+            amount_normalized = amount.replace(",", ".")
+            desc = []
+            i += 3
+            while i < len(clean_lines) and not re.match(r"\d{2}\.\d{2}\.\d{2}", clean_lines[i]):
+                desc.append(clean_lines[i])
                 i += 1
-                # Collect following lines that do not start with a date
-                while i < len(section) and not re.match(r"\d{2}\.\d{2}\.\d{2}", section[i]):
-                    description_lines.append(section[i].strip())
-                    i += 1
-                transactions.append({
-                    "Date": "20" + date.replace(".", "-"),
-                    "ValueDate": "20" + value_date.replace(".", "-"),
-                    "Amount": float(amount),
-                    "Description": " ".join(description_lines),
-                    "Type": "Credit" if float(amount) > 0 else "Debit"
-                })
-            else:
-                i += 1
+
+            transactions.append({
+                "Date": "20" + date.replace(".", "-"),
+                "ValueDate": "20" + value_date.replace(".", "-"),
+                "Amount": amount.strip(),
+                "Description": " ".join(desc),
+                "Type": "Credit" if float(amount_normalized) > 0 else "Debit"
+            })
         else:
             i += 1
 
-    return jsonify({
+    return {
         "Summary": summary,
         "Transactions": transactions
-    })
+    }
+
+@app.route("/", methods=["GET"])
+def health():
+    return "✅ OTP Parser API is running. Use POST /parse to upload a PDF."
+
+@app.route("/parse", methods=["POST"])
+def parse():
+    if 'file' not in request.files:
+        return jsonify({ "error": "No file uploaded" }), 400
+
+    file = request.files['file']
+    text = extract_text_from_pdf(file)
+    result = parse_otp_statement(text)
+    return jsonify(result)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(debug=True)
