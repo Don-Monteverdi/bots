@@ -1,34 +1,38 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>OTP Parser Test</title>
+  <title>OTP Bank Statement Parser</title>
 </head>
 <body>
-  <h1>Upload OTP Bank Statement</h1>
-  <input type="file" id="fileInput">
-  <button onclick="upload()">Upload</button>
+  <h2>Upload OTP PDF Statement</h2>
+  <input type="file" id="fileInput" />
+  <button onclick="uploadFile()">Upload</button>
   <pre id="output"></pre>
 
   <script>
-    function upload() {
+    async function uploadFile() {
       const fileInput = document.getElementById('fileInput');
+      const output = document.getElementById('output');
       const file = fileInput.files[0];
-      const formData = new FormData();
-      formData.append('file', file);
+      if (!file) {
+        alert("No file selected!");
+        return;
+      }
 
-      fetch('/parse', {
-        method: 'POST',
-        body: formData
-      })
-      .then(res => res.json())
-      .then(data => {
-        document.getElementById('output').textContent = JSON.stringify(data, null, 2);
-      })
-      .catch(err => {
-        document.getElementById('output').textContent = 'Error: ' + err;
-      });
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        const response = await fetch("/parse", {
+          method: "POST",
+          body: formData
+        });
+        const result = await response.json();
+        output.textContent = JSON.stringify(result, null, 2);
+      } catch (error) {
+        output.textContent = "Error: " + error;
+      }
     }
   </script>
 </body>
