@@ -1,38 +1,30 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>OTP Bank Statement Parser</title>
+  <meta charset="UTF-8">
+  <title>OTP Parser Test</title>
 </head>
 <body>
-  <h1>OTP Bank Statement Parser</h1>
-  <input type="file" id="pdfFile" accept=".pdf" />
-  <button onclick="uploadPDF()">Upload & Parse</button>
+  <h1>Upload OTP Bank PDF</h1>
+  <input type="file" id="fileInput" />
+  <button onclick="upload()">Upload & Parse</button>
   <pre id="output"></pre>
 
   <script>
-    async function uploadPDF() {
-      const fileInput = document.getElementById('pdfFile');
-      const output = document.getElementById('output');
-      const file = fileInput.files[0];
-      if (!file) {
-        alert('Please select a file.');
-        return;
-      }
+    async function upload() {
+      const file = document.getElementById('fileInput').files[0];
+      if (!file) return alert("Select a file");
 
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append("file", file);
 
-      try {
-        const res = await fetch('/parse', {
-          method: 'POST',
-          body: formData
-        });
-        const data = await res.json();
-        output.textContent = JSON.stringify(data, null, 2);
-      } catch (err) {
-        output.textContent = 'Error: ' + err;
-      }
+      const res = await fetch("/parse", {
+        method: "POST",
+        body: formData
+      });
+
+      const data = await res.json();
+      document.getElementById("output").textContent = JSON.stringify(data, null, 2);
     }
   </script>
 </body>
