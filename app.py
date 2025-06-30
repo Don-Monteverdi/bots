@@ -1,77 +1,87 @@
-
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 import fitz  # PyMuPDF
 import re
-from flask_cors import CORS
 
-app = Flask(__name__, static_url_path='', static_folder='.')
+app = Flask(__name__)
 CORS(app)
 
-@app.route("/")
-def index():
-    return send_from_directory('.', 'index.html')
-
-@app.route('/parse', methods=['POST'])
-def parse_pdf():
-    file = request.files['file']
-    doc = fitz.open(stream=file.read(), filetype="pdf")
+def extract_text_from_pdf(file_stream):
+    doc = fitz.open(stream=file_stream.read(), filetype="pdf")
     text = ""
     for page in doc:
         text += page.get_text()
+    return text
 
+def parse_bank_statement(text):
     lines = text.splitlines()
-    start_idx, end_idx = 0, len(lines)
+    clean_lines = [line.strip() for line in lines if line.strip()]
 
-    for i, line in enumerate(lines):
-        if "NYITÓ EGYENLEG" in line:
-            start_idx = max(0, i - 2)
+    start, end = None, None
+    for i, line in enumerate(clean_lines):
+        if "NYITÓ EGYENLEG" in line and start is None:
+            start = max(0, i - 2)
         if "ZÁRÓ EGYENLEG" in line:
-            end_idx = min(len(lines), i + 3)
+            end = min(len(clean_lines), i + 3)
+            break
 
-    relevant_lines = lines[start_idx:end_idx]
-    joined_lines = "\n".join(relevant_lines)
+    if start is None or end is None:
+        return {"Summary": {}, "Transactions": []}
 
-    def extract_balance(label):
-        match = re.search(rf"{label}\s*(-?\d[\d\s]*,\d{{3}})", joined_lines)
-        if match:
-            return match.group(1).replace(" ", "").replace(",", ".")
+    section = clean_lines[start:end]
+    joined_text = "\n".join(section)
+
+    summary = {
+        "Opening Balance": None,
+        "Closing Balance": None,
+        "Total Credits": None,
+        "Total Debits": None,
+    }
+
+    def find_amount(label):
+        for line in section:
+            if label in line:
+                parts = re.findall(r"-?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,3})?", line)
+                return parts[-1].replace(",", ".") if parts else None
         return None
 
-    opening_balance = extract_balance("NYITÓ EGYENLEG")
-    closing_balance = extract_balance("ZÁRÓ EGYENLEG")
-    total_credits = extract_balance("JÓVÁÍRÁSOK ÖSSZESEN")
-    total_debits = extract_balance("TERHELÉSEK ÖSSZESEN")
+    summary["Opening Balance"] = find_amount("NYITÓ EGYENLEG")
+    summary["Closing Balance"] = find_amount("ZÁRÓ EGYENLEG")
+    summary["Total Credits"] = find_amount("JÓVÁÍRÁSOK ÖSSZESEN")
+    summary["Total Debits"] = find_amount("TERHELÉSEK ÖSSZESEN")
 
     transaction_pattern = re.compile(
-        r"(\d{4}\.\d{2}\.\d{2})\s+(\d{4}\.\d{2}\.\d{2})?\s+([-\d\s,.]+)\s+(.*)"
+        r"(\d{4}\.\d{2}\.\d{2})\s+(\d{4}\.\d{2}\.\d{2})?\s+(-?\d+[.,]?\d*)\s+(.*)"
     )
 
     transactions = []
-    for line in relevant_lines:
+    for line in clean_lines:
         match = transaction_pattern.match(line)
         if match:
             date, valuedate, amount, desc = match.groups()
-            amount_clean = amount.replace(" ", "").replace(".", "").replace(",", ".")
-            type_ = "Credit" if not amount_clean.startswith("-") else "Debit"
+            amount = amount.replace(",", ".")
             transactions.append({
-                "Date": date.strip(),
-                "ValueDate": valuedate.strip() if valuedate else date.strip(),
-                "Amount": f"{float(amount_clean):.3f}",
+                "Date": date,
+                "ValueDate": valuedate or date,
+                "Amount": f"{float(amount):.3f}" if "." in amount else f"{int(amount):.3f}",
                 "Description": desc.strip(),
-                "Type": type_
+                "Type": "Credit" if float(amount.replace('.', '').replace(',', '.')) > 0 else "Debit"
             })
 
-    summary = {
-        "Opening Balance": opening_balance,
-        "Closing Balance": closing_balance,
-        "Total Credits": total_credits,
-        "Total Debits": total_debits
-    }
+    return {"Summary": summary, "Transactions": transactions}
 
-    return jsonify({
-        "Summary": summary,
-        "Transactions": transactions
-    })
+@app.route("/")
+def home():
+    return "✅ OTP Parser API is running. Use POST /parse to upload a PDF."
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000, debug=True)
+@app.route("/parse", methods=["POST"])
+def parse():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+
+    text = extract_text_from_pdf(file)
+    result = parse_bank_statement(text)
+    return jsonify(result)
