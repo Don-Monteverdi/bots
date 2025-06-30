@@ -1,22 +1,45 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>OTP Bank Statement Parser</title>
+  <meta charset="UTF-8">
+  <title>OTP Parser Test Frontend</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    input[type="file"] { margin-bottom: 10px; }
+    button { padding: 8px 16px; }
+    pre { background: #f4f4f4; padding: 10px; border: 1px solid #ccc; white-space: pre-wrap; }
+  </style>
 </head>
 <body>
-  <h1>OTP Parser UI</h1>
-  <input type="file" id="pdfFile" />
-  <button onclick="upload()">Upload & Parse</button>
-  <pre id="result"></pre>
+  <h1>OTP Bank Statement Parser</h1>
+  <p>Select a PDF bank statement and upload it. The parsed result will be shown below.</p>
+  <input type="file" id="pdfInput">
+  <button onclick="uploadPDF()">Upload & Parse</button>
+  <h2>Parsed Output:</h2>
+  <pre id="output"></pre>
+
   <script>
-    async function upload() {
-      const file = document.getElementById('pdfFile').files[0];
+    async function uploadPDF() {
+      const input = document.getElementById('pdfInput');
+      const output = document.getElementById('output');
+      const file = input.files[0];
+      if (!file) {
+        output.textContent = 'Please select a PDF file first.';
+        return;
+      }
       const formData = new FormData();
       formData.append('file', file);
-      const res = await fetch('/parse', { method: 'POST', body: formData });
-      const data = await res.json();
-      document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+      try {
+        const response = await fetch('/parse', {
+          method: 'POST',
+          body: formData
+        });
+        const result = await response.json();
+        output.textContent = JSON.stringify(result, null, 2);
+      } catch (err) {
+        output.textContent = 'Error parsing PDF: ' + err.message;
+      }
     }
   </script>
 </body>
