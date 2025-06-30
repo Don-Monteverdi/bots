@@ -29,12 +29,13 @@ def parse_pdf():
             end_idx = min(len(lines), i + 3)
 
     relevant_lines = lines[start_idx:end_idx]
-    parsed_text = "
-".join(relevant_lines)
 
     # Extract balances
+    joined_lines = "
+".join(relevant_lines)
+
     def extract_balance(label):
-        match = re.search(rf"{label}\s*(-?\d[\d\s]*,\d{{3}})", parsed_text)
+        match = re.search(rf"{label}\s*(-?\d[\d\s]*,\d{{3}})", joined_lines)
         if match:
             return match.group(1).replace(" ", "").replace(",", ".")
         return None
