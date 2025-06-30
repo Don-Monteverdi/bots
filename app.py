@@ -1,55 +1,10 @@
+
 from flask import Flask, request, jsonify, send_from_directory
-import fitz  # PyMuPDF
-import os
 from flask_cors import CORS
+import os
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='', static_folder='.')
 CORS(app)
-
-def extract_text_from_first_page(pdf_path):
-    doc = fitz.open(pdf_path)
-    first_page = doc[0]
-    text = first_page.get_text()
-    doc.close()
-    return text
-
-def parse_transactions(text):
-    import re
-    lines = text.split('\n')
-    transactions = []
-    total_debits = 0.0
-    total_credits = 0.0
-
-    for line in lines:
-        if re.search(r'\d{2}\.\d{2}\.\d{2}', line):
-            match = re.search(r'(\d{2}\.\d{2}\.\d{2}).*?([-+]?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2,3}))', line)
-            if match:
-                date = '20' + match.group(1).replace('.', '-')
-                amount = match.group(2).replace('.', '').replace(',', '.')
-                amount_val = float(amount)
-                desc = line.strip()
-                transaction_type = "Credit" if amount_val > 0 else "Debit"
-                if transaction_type == "Credit":
-                    total_credits += amount_val
-                else:
-                    total_debits += abs(amount_val)
-                transactions.append({
-                    "Date": date,
-                    "Description": desc,
-                    "Amount": str(amount_val),
-                    "Type": transaction_type,
-                    "ValueDate": date
-                })
-
-    return {
-        "Summary": {
-            "Opening Balance": None,
-            "Closing Balance": None,
-            "Total Credits": f"{total_credits:.3f}",
-            "Total Debits": f"-{total_debits:.3f}"
-        },
-        "Transactions": transactions
-    }
 
 @app.route('/')
 def index():
@@ -58,21 +13,33 @@ def index():
 @app.route('/parse', methods=['POST'])
 def parse():
     if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
+        return jsonify({'error': 'No file part'}), 400
 
     file = request.files['file']
-    if file.filename == '' or not file.filename.endswith('.pdf'):
-        return jsonify({"error": "Invalid file type"}), 400
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
 
-    filepath = os.path.join('/tmp', file.filename)
-    file.save(filepath)
+    if not file.filename.lower().endswith('.pdf'):
+        return jsonify({'error': 'Invalid file type'}), 400
 
-    try:
-        text = extract_text_from_first_page(filepath)
-        parsed_data = parse_transactions(text)
-        return jsonify(parsed_data)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    # Dummy parsed result for now
+    return jsonify({
+        "Summary": {
+            "Opening Balance": "1000",
+            "Closing Balance": "1500",
+            "Total Credits": "500",
+            "Total Debits": "-200"
+        },
+        "Transactions": [
+            {
+                "Date": "2025-06-01",
+                "Description": "Example Transaction",
+                "Amount": "100.00",
+                "Type": "Credit",
+                "ValueDate": "2025-06-01"
+            }
+        ]
+    })
 
 if __name__ == '__main__':
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    app.run(host='0.0.0.0', port=5000, debug=True)
