@@ -1,5 +1,5 @@
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 import fitz  # PyMuPDF
 import re
 
@@ -74,8 +74,8 @@ def parse_otp_statement(text):
     }
 
 @app.route("/", methods=["GET"])
-def health():
-    return "✅ OTP Parser API is running. Use POST /parse to upload a PDF."
+def index():
+    return send_from_directory(".", "index.html")
 
 @app.route("/parse", methods=["POST"])
 def parse():
