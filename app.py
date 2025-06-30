@@ -1,72 +1,71 @@
-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import fitz  # PyMuPDF
+import os
+import pdfplumber
 import re
 
 app = Flask(__name__)
 CORS(app)
 
-def extract_summary(text):
-    summary = {
-        "Opening Balance": None,
-        "Closing Balance": None,
-        "Total Credits": None,
-        "Total Debits": None
-    }
-
-    # More robust summary parsing logic
-    try:
-        # Use regular expressions to extract numeric values after the keywords
-        opening = re.search(r"NYITÓ EGYENLEG\s+(-?[\d.]+)", text)
-        closing = re.search(r"ZÁRÓ EGYENLEG\s+(-?[\d.]+)", text)
-        credits = re.search(r"JÓVÁÍRÁSOK ÖSSZESEN:\s*(-?[\d.]+)", text)
-        debits = re.search(r"TERHELÉSEK ÖSSZESEN:\s*(-?[\d.]+)", text)
-
-        summary["Opening Balance"] = opening.group(1) if opening else None
-        summary["Closing Balance"] = closing.group(1) if closing else None
-        summary["Total Credits"] = credits.group(1) if credits else None
-        summary["Total Debits"] = debits.group(1) if debits else None
-    except:
-        pass
-
-    return summary
-
 def extract_transactions(text):
-    # Transactions logic preserved from the last working version
-    pattern = r"(\d{4}\.\d{2}\.\d{2}).*?(\d{4}\.\d{2}\.\d{2})?\s+([+-]?[\d.]+)\s+(.*?)\n"
-    matches = re.findall(pattern, text, re.DOTALL)
-
     transactions = []
-    for match in matches:
-        date, val_date, amount, desc = match
-        if amount.strip() == "":
-            continue
-        transactions.append({
-            "Date": date,
-            "ValueDate": val_date if val_date else date,
-            "Amount": amount.strip(),
-            "Description": desc.strip(),
-            "Type": "Credit" if "-" not in amount.strip() else "Debit"
-        })
+    lines = text.split('\n')
+    for i, line in enumerate(lines):
+        if re.match(r'\d{2}\.\d{2}\.\d{2}', line):  # Match dates like 25.03.04
+            try:
+                parts = line.split()
+                date = parts[0]
+                value_date = parts[1]
+                amount_match = re.search(r'(-?\d+[.,]\d+|-?\d+)', line)
+                amount = amount_match.group().replace(",", ".") if amount_match else "0"
+                trans_type = "Credit" if not amount.startswith("-") else "Debit"
+                description = line[line.find(amount) + len(amount):].strip()
+                transactions.append({
+                    "Date": f"20{date[-2:]}-{date[3:5]}-{date[0:2]}",
+                    "ValueDate": f"20{value_date[-2:]}-{value_date[3:5]}-{value_date[0:2]}",
+                    "Amount": amount,
+                    "Description": description,
+                    "Type": trans_type
+                })
+            except Exception:
+                continue
     return transactions
 
-@app.route("/")
+@app.route('/')
 def index():
     return "✅ OTP Parser API is running. Use POST /parse to upload a PDF."
 
-@app.route("/parse", methods=["POST"])
+@app.route('/parse', methods=['POST'])
 def parse_pdf():
-    if "file" not in request.files:
+    if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
 
-    file = request.files["file"]
-    pdf = fitz.open(stream=file.read(), filetype="pdf")
-    text = ""
-    for page in pdf:
-        text += page.get_text()
+    file = request.files['file']
 
-    summary = extract_summary(text)
-    transactions = extract_transactions(text)
+    try:
+        with pdfplumber.open(file) as pdf:
+            text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
 
-    return jsonify({"Summary": summary, "Transactions": transactions})
+        transactions = extract_transactions(text)
+
+        total_credits = sum(float(t['Amount']) for t in transactions if t['Type'] == 'Credit')
+        total_debits = sum(float(t['Amount']) for t in transactions if t['Type'] == 'Debit')
+
+        summary = {
+            "Opening Balance": None,
+            "Closing Balance": None,
+            "Total Credits": f"{total_credits:.3f}",
+            "Total Debits": f"{total_debits:.3f}"
+        }
+
+        return jsonify({
+            "Summary": summary,
+            "Transactions": transactions
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port, debug=True)
