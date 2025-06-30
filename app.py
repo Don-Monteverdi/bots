@@ -1,71 +1,63 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-import os
-import pdfplumber
+import fitz  # PyMuPDF
 import re
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='', static_folder='.')
 CORS(app)
-
-def extract_transactions(text):
-    transactions = []
-    lines = text.split('\n')
-    for i, line in enumerate(lines):
-        if re.match(r'\d{2}\.\d{2}\.\d{2}', line):  # Match dates like 25.03.04
-            try:
-                parts = line.split()
-                date = parts[0]
-                value_date = parts[1]
-                amount_match = re.search(r'(-?\d+[.,]\d+|-?\d+)', line)
-                amount = amount_match.group().replace(",", ".") if amount_match else "0"
-                trans_type = "Credit" if not amount.startswith("-") else "Debit"
-                description = line[line.find(amount) + len(amount):].strip()
-                transactions.append({
-                    "Date": f"20{date[-2:]}-{date[3:5]}-{date[0:2]}",
-                    "ValueDate": f"20{value_date[-2:]}-{value_date[3:5]}-{value_date[0:2]}",
-                    "Amount": amount,
-                    "Description": description,
-                    "Type": trans_type
-                })
-            except Exception:
-                continue
-    return transactions
 
 @app.route('/')
 def index():
-    return "✅ OTP Parser API is running. Use POST /parse to upload a PDF."
+    return send_from_directory('.', 'index.html')
 
 @app.route('/parse', methods=['POST'])
 def parse_pdf():
     if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-
+        return jsonify({"error": "No file provided"}), 400
     file = request.files['file']
+    if not file.filename.endswith('.pdf'):
+        return jsonify({"error": "Invalid file type"}), 400
 
-    try:
-        with pdfplumber.open(file) as pdf:
-            text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
+    doc = fitz.open(stream=file.read(), filetype="pdf")
+    text = ""
+    for page in doc:
+        text += page.get_text()
 
-        transactions = extract_transactions(text)
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    full_text = " ".join(lines)
 
-        total_credits = sum(float(t['Amount']) for t in transactions if t['Type'] == 'Credit')
-        total_debits = sum(float(t['Amount']) for t in transactions if t['Type'] == 'Debit')
+    transactions = []
+    debit_total = 0.0
+    credit_total = 0.0
 
-        summary = {
-            "Opening Balance": None,
-            "Closing Balance": None,
-            "Total Credits": f"{total_credits:.3f}",
-            "Total Debits": f"{total_debits:.3f}"
-        }
-
-        return jsonify({
-            "Summary": summary,
-            "Transactions": transactions
+    transaction_pattern = re.compile(r"(\d{2}\.\d{2}\.\d{2}) (\d{2}\.\d{2}\.\d{2}) ([+-]?[\d\.]+) (.+?)(?=\d{2}\.\d{2}\.\d{2}|$)")
+    for match in transaction_pattern.finditer(full_text):
+        date, value_date, amount, desc = match.groups()
+        amount_val = float(amount.replace('.', '').replace(',', '.')) if ',' in amount else float(amount.replace(',', '.'))
+        tx_type = "Credit" if amount_val > 0 else "Debit"
+        transactions.append({
+            "Date": f"20{date}",
+            "ValueDate": f"20{value_date}",
+            "Amount": f"{amount_val:.3f}",
+            "Type": tx_type,
+            "Description": desc.strip()
         })
+        if tx_type == "Credit":
+            credit_total += amount_val
+        else:
+            debit_total += amount_val
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    summary = {
+        "Opening Balance": None,
+        "Closing Balance": None,
+        "Total Credits": f"{credit_total:.3f}" if credit_total else None,
+        "Total Debits": f"{debit_total:.3f}" if debit_total else None
+    }
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    return jsonify({
+        "Summary": summary,
+        "Transactions": transactions
+    })
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=10000, debug=True)
