@@ -1,43 +1,35 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>OTP Bank Statement Parser</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: auto; }
-    pre { background: #f4f4f4; padding: 15px; border-radius: 6px; overflow-x: auto; }
-    button { margin-top: 10px; padding: 8px 14px; font-size: 16px; }
-  </style>
+  <meta charset="UTF-8">
+  <title>OTP Parser Test</title>
 </head>
 <body>
-  <h1>OTP Bank Statement Parser</h1>
-  <p>Select a PDF bank statement and upload it. The parsed result will be shown below.</p>
-  <form id="uploadForm">
-    <input type="file" id="pdfFile" name="file" accept="application/pdf" required />
-    <br />
-    <button type="submit">Upload & Parse</button>
-  </form>
-  <h2>Parsed Output:</h2>
-  <pre id="result">Awaiting upload...</pre>
+  <h1>Upload OTP Bank Statement</h1>
+  <input type="file" id="fileInput">
+  <button onclick="upload()">Upload</button>
+  <pre id="output"></pre>
 
   <script>
-    document.getElementById("uploadForm").addEventListener("submit", async function (e) {
-      e.preventDefault();
-      const fileInput = document.getElementById("pdfFile");
+    function upload() {
+      const fileInput = document.getElementById('fileInput');
       const file = fileInput.files[0];
-      if (!file) return;
-
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append('file', file);
 
-      const response = await fetch("/parse", {
-        method: "POST",
-        body: formData,
+      fetch('/parse', {
+        method: 'POST',
+        body: formData
+      })
+      .then(res => res.json())
+      .then(data => {
+        document.getElementById('output').textContent = JSON.stringify(data, null, 2);
+      })
+      .catch(err => {
+        document.getElementById('output').textContent = 'Error: ' + err;
       });
-
-      const result = await response.json();
-      document.getElementById("result").textContent = JSON.stringify(result, null, 2);
-    });
+    }
   </script>
 </body>
 </html>
