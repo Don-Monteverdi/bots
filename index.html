@@ -1,36 +1,63 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>OTP Parser</title>
+  <title>OTP Bank Statement Parser</title>
   <style>
-    body { font-family: Arial; padding: 20px; max-width: 800px; margin: auto; }
-    input, button { padding: 10px; margin: 10px 0; }
-    pre { background: #f0f0f0; padding: 10px; overflow-x: auto; }
+    body {
+      font-family: sans-serif;
+      max-width: 800px;
+      margin: auto;
+      padding: 2rem;
+      background: #f9f9f9;
+    }
+    h1 {
+      color: #333;
+    }
+    input, button {
+      margin-top: 1rem;
+    }
+    pre {
+      background: #eee;
+      padding: 1rem;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
   </style>
 </head>
 <body>
   <h1>OTP Bank Statement Parser</h1>
-  <input type="file" id="fileInput" />
+  <p>Select a PDF bank statement and upload it. The parsed result will be shown below.</p>
+
+  <input type="file" id="fileInput" accept=".pdf" />
   <button onclick="uploadFile()">Upload & Parse</button>
-  <pre id="output">Parsed output will appear here...</pre>
+
+  <h2>Parsed Output:</h2>
+  <pre id="result">No result yet.</pre>
 
   <script>
     async function uploadFile() {
-      const file = document.getElementById('fileInput').files[0];
-      if (!file) return alert("Select a file first!");
+      const fileInput = document.getElementById('fileInput');
+      const file = fileInput.files[0];
+      if (!file || file.type !== 'application/pdf') {
+        alert('Please select a valid PDF file.');
+        return;
+      }
 
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append('file', file);
 
-      const response = await fetch("/parse", {
-        method: "POST",
-        body: formData,
-      });
+      try {
+        const response = await fetch('/parse', {
+          method: 'POST',
+          body: formData
+        });
 
-      const result = await response.json();
-      document.getElementById("output").textContent = JSON.stringify(result, null, 2);
+        const result = await response.json();
+        document.getElementById('result').textContent = JSON.stringify(result, null, 2);
+      } catch (error) {
+        document.getElementById('result').textContent = 'Error: ' + error;
+      }
     }
   </script>
 </body>
