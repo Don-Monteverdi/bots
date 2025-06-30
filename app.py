@@ -29,27 +29,29 @@ def parse_pdf():
         return jsonify({"error": "Could not locate transaction section"}), 400
 
     def extract(label):
-        match = re.search(rf'(-?\d+(?:\.\d{{1,3}})?)\s*\n?{label}', text, re.IGNORECASE)
+        match = re.search(rf'(-?\d+(?:\.\d{{1,3}})?)\s*\n?.*{label}', text, re.IGNORECASE)
         return match.group(1) if match else None
 
     summary = {
-        "Opening Balance": extract("NYITÓ EGYENLEG"),
-        "Closing Balance": extract("ZÁRÓ EGYENLEG"),
-        "Total Credits": extract("JÓVÁÍRÁSOK ÖSSZESEN"),
-        "Total Debits": extract("TERHELÉSEK ÖSSZESEN")
+        "Opening Balance": extract("NYITO EGYENLEG"),
+        "Closing Balance": extract("ZARO EGYENLEG"),
+        "Total Credits": extract("JOVAIRASOK OSSZESEN"),
+        "Total Debits": extract("TERHELES.*OSSZESEN")
     }
 
     results = []
     i = 0
     while i < len(section):
-        if re.match(r'\d{2}\.\d{2}\.\d{2}', section[i]):
+        line = section[i].strip().replace(" ", "")
+        if re.match(r'\d{2}\.\d{2}\.\d{2}', line):
             try:
-                date = datetime.strptime(section[i], "%y.%m.%d").strftime("%Y-%m-%d")
+                date = datetime.strptime(line, "%y.%m.%d").strftime("%Y-%m-%d")
                 i += 1
 
                 value_date = None
-                if re.match(r'\d{2}\.\d{2}\.\d{2}', section[i]):
-                    value_date = datetime.strptime(section[i], "%y.%m.%d").strftime("%Y-%m-%d")
+                check = section[i].strip().replace(" ", "")
+                if re.match(r'\d{2}\.\d{2}\.\d{2}', check):
+                    value_date = datetime.strptime(check, "%y.%m.%d").strftime("%Y-%m-%d")
                     i += 1
 
                 amt_str = section[i].strip()
@@ -60,7 +62,10 @@ def parse_pdf():
                 i += 1
 
                 desc = []
-                while i < len(section) and not re.match(r'\d{2}\.\d{2}\.\d{2}', section[i]):
+                while i < len(section):
+                    check = section[i].strip().replace(" ", "")
+                    if re.match(r'\d{2}\.\d{2}\.\d{2}', check):
+                        break
                     if not re.match(r'-?\d+(?:\.\d{1,3})?$', section[i].strip()):
                         desc.append(section[i].strip())
                     i += 1
