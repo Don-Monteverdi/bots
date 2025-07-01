@@ -1,8 +1,8 @@
 
-from flask import Flask, request, jsonify, send_from_directory, request as flask_request
+from flask import Flask, request, jsonify, send_from_directory
 import os
-import fitz  # PyMuPDF
 import re
+import fitz  # PyMuPDF
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
@@ -10,78 +10,68 @@ UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
-def extract_number(text):
-    match = re.search(r"[-+]?\d[\d\s]*[.,]\d{2}", text)
-    if match:
-        return float(match.group(0).replace(" ", "").replace(",", "."))
-    return 0.0
+def is_date(val):
+    return re.match(r"\d{2}\.\d{2}\.\d{2}", val)
 
-def parse_pdf(file_path, debug=False):
-    doc = fitz.open(file_path)
-    raw_text = ""
-    for page in doc:
-        raw_text += page.get_text()
+def is_amount(val):
+    return re.match(r"[-+]?\d[\d\s]*[.,]?\d*", val)
 
-    lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
+def normalize_amount(val):
+    val = val.replace(" ", "").replace(",", ".")
+    try:
+        return float(val)
+    except:
+        return 0.0
 
-    if debug:
-        return {
-            "debug_lines": lines[:50],  # show first 50 cleaned lines
-            "raw_preview": raw_text[:1000]
-        }
-
-    # === Transaction grouping ===
-    tx_blocks = []
-    buffer = ""
-    date_line_regex = re.compile(r"^\d{2}\.\d{2}\.\d{2}\s+\d{2}\.\d{2}\.\d{2}")
-
-    for line in lines:
-        if date_line_regex.match(line):
-            if buffer:
-                tx_blocks.append(buffer.strip())
-            buffer = line
-        else:
-            buffer += " " + line
-    if buffer:
-        tx_blocks.append(buffer.strip())
-
-    # === Improved pattern: tolerate no space between amount and description ===
-    transaction_pattern = re.compile(
-        r"(?P<date>\d{2}\.\d{2}\.\d{2})\s+(?P<valuedate>\d{2}\.\d{2}\.\d{2})\s+(?P<amount>[-+]?\d[\d\s]*[.,]\d{2})(?P<desc>.+)"
-    )
+def parse_pdf(path):
+    doc = fitz.open(path)
+    text = "\n".join(page.get_text() for page in doc)
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
 
     transactions = []
-    summary = {}
-
-    for block in tx_blocks:
-        match = transaction_pattern.match(block)
-        if match:
-            raw_amount = match.group("amount").replace(" ", "").replace(",", ".")
-            amount = float(raw_amount)
+    i = 0
+    while i < len(lines) - 2:
+        if is_date(lines[i]) and is_date(lines[i+1]) and is_amount(lines[i+2]):
+            date = "20" + lines[i].replace(".", "-")
+            valuedate = "20" + lines[i+1].replace(".", "-")
+            amount = normalize_amount(lines[i+2])
+            j = i + 3
+            desc_lines = []
+            while j < len(lines) and not is_date(lines[j]):
+                desc_lines.append(lines[j])
+                j += 1
+            desc = " ".join(desc_lines)
             transactions.append({
-                "Date": "20" + match.group("date"),
-                "ValueDate": "20" + match.group("valuedate"),
+                "Date": date,
+                "ValueDate": valuedate,
                 "Amount": amount,
-                "Type": "Credit" if amount >= 0 else "Debit",
-                "Description": match.group("desc").strip()
+                "Type": "Credit" if amount > 0 else "Debit",
+                "Description": desc.strip()
             })
+            i = j
+        else:
+            i += 1
+
+    summary = {
+        "Total Credits": round(sum(t["Amount"] for t in transactions if t["Amount"] > 0), 2),
+        "Total Debits": round(sum(t["Amount"] for t in transactions if t["Amount"] < 0), 2),
+        "Opening Balance": None,
+        "Closing Balance": None
+    }
 
     for line in lines:
-        if "JÓVÁÍRÁSOK ÖSSZESEN" in line:
-            summary["Total Credits"] = extract_number(line)
-        elif "TERHELÉSEK ÖSSZESEN" in line:
-            summary["Total Debits"] = extract_number(line)
-        elif "NYITÓ EGYENLEG" in line:
-            summary["Opening Balance"] = extract_number(line)
-        elif "ZÁRÓ EGYENLEG" in line:
-            summary["Closing Balance"] = extract_number(line)
+        if "NYITÓ EGYENLEG" in line:
+            match = re.search(r"[-+]?\d[\d\s]*[.,]?\d*", line)
+            if match:
+                summary["Opening Balance"] = normalize_amount(match.group(0))
+        if "ZÁRÓ EGYENLEG" in line:
+            match = re.search(r"[-+]?\d[\d\s]*[.,]?\d*", line)
+            if match:
+                summary["Closing Balance"] = normalize_amount(match.group(0))
 
     return {
         "Bank": "OTP",
-        "Opening Balance": summary.get("Opening Balance", 0.0),
-        "Closing Balance": summary.get("Closing Balance", 0.0),
-        "Total Credits": summary.get("Total Credits", 0.0),
-        "Total Debits": summary.get("Total Debits", 0.0),
+        **summary,
         "Transactions": transactions
     }
 
@@ -97,10 +87,8 @@ def parse_route():
     path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
     file.save(path)
 
-    debug = flask_request.args.get("debug") == "true"
-
     try:
-        result = parse_pdf(path, debug=debug)
+        result = parse_pdf(path)
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
