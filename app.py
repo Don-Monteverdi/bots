@@ -1,5 +1,5 @@
 
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, request as flask_request
 import os
 import fitz  # PyMuPDF
 import re
@@ -16,13 +16,19 @@ def extract_number(text):
         return float(match.group(0).replace(" ", "").replace(",", "."))
     return 0.0
 
-def parse_pdf(file_path):
+def parse_pdf(file_path, debug=False):
     doc = fitz.open(file_path)
     raw_text = ""
     for page in doc:
         raw_text += page.get_text()
 
     lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
+
+    if debug:
+        return {
+            "debug_lines": lines[:50],  # show first 50 cleaned lines
+            "raw_preview": raw_text[:1000]
+        }
 
     # === Transaction grouping ===
     tx_blocks = []
@@ -91,8 +97,10 @@ def parse_route():
     path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
     file.save(path)
 
+    debug = flask_request.args.get("debug") == "true"
+
     try:
-        result = parse_pdf(path)
+        result = parse_pdf(path, debug=debug)
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
