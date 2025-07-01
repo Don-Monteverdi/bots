@@ -7,14 +7,19 @@
         body { font-family: Arial, sans-serif; padding: 2em; background: #f7f7f7; }
         h1 { color: #333; }
         form { margin-bottom: 2em; }
-        pre { background: #fff; border: 1px solid #ccc; padding: 1em; max-height: 500px; overflow: auto; }
+        pre { background: #fff; border: 1px solid #ccc; padding: 1em; max-height: 500px; overflow: auto; white-space: pre-wrap;}
         button { padding: 0.5em 1em; background: #007bff; color: white; border: none; cursor: pointer; }
+        label { display: inline-block; margin-top: 1em; }
     </style>
 </head>
 <body>
     <h1>📄 Upload Bank Statement (PDF)</h1>
     <form id="uploadForm" enctype="multipart/form-data">
         <input type="file" name="file" id="fileInput" accept=".pdf" required />
+        <label>
+            <input type="checkbox" id="debugMode" />
+            Enable Debug Mode
+        </label><br><br>
         <button type="submit">Parse PDF</button>
     </form>
     <pre id="result">Awaiting upload...</pre>
@@ -25,12 +30,15 @@
             e.preventDefault();
             const fileInput = document.getElementById("fileInput");
             const file = fileInput.files[0];
+            const debug = document.getElementById("debugMode").checked;
             if (!file) return;
 
             const formData = new FormData();
             formData.append("file", file);
 
-            const response = await fetch("/parse", {
+            const endpoint = debug ? "/parse?debug=true" : "/parse";
+
+            const response = await fetch(endpoint, {
                 method: "POST",
                 body: formData
             });
