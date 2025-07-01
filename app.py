@@ -38,6 +38,9 @@ def parse_pdf(path):
     lines = [line.strip() for line in text.split("\n") if line.strip()]
 
     transactions = []
+
+    opening_balance = None
+    closing_balance = None
     i = 0
     while i < len(lines) - 2:
         if is_date(lines[i]) and is_date(lines[i+1]) and is_amount(lines[i+2]):
@@ -64,7 +67,7 @@ def parse_pdf(path):
     summary = {
         "Total Credits": round(sum(t["Amount"] for t in transactions if t["Amount"] > 0), 2),
         "Total Debits": round(sum(t["Amount"] for t in transactions if t["Amount"] < 0), 2),
-        "Opening Balance": None,
+        "Opening Balance": opening_balance,
         "Closing Balance": None
     }
 
@@ -109,16 +112,3 @@ def index():
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0")
-
-
-def extract_balance(label, lines):
-    for idx, line in enumerate(lines):
-        if label in line.upper():
-            # Look for first number after the label line or on the same line
-            after = lines[idx + 1:idx + 5]
-            candidates = [line] + after
-            for candidate in candidates:
-                match = re.search(r'[-]?\d+[.,]?\d*', candidate)
-                if match:
-                    return normalize_amount(match.group(0))
-    return None
