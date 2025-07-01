@@ -109,3 +109,16 @@ def index():
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0")
+
+
+def extract_balance(label, lines):
+    for idx, line in enumerate(lines):
+        if label in line.upper():
+            # Look for first number after the label line or on the same line
+            after = lines[idx + 1:idx + 5]
+            candidates = [line] + after
+            for candidate in candidates:
+                match = re.search(r'[-]?\d+[.,]?\d*', candidate)
+                if match:
+                    return normalize_amount(match.group(0))
+    return None
