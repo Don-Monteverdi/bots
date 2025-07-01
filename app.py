@@ -39,9 +39,9 @@ def parse_pdf(file_path):
     if buffer:
         tx_blocks.append(buffer.strip())
 
-    # === Extract each transaction ===
+    # === Improved pattern: tolerate no space between amount and description ===
     transaction_pattern = re.compile(
-        r"(?P<date>\d{2}\.\d{2}\.\d{2})\s+(?P<valuedate>\d{2}\.\d{2}\.\d{2})\s+(?P<amount>[-+]?[\d\s]*[.,]\d{2})\s+(?P<desc>.+)"
+        r"(?P<date>\d{2}\.\d{2}\.\d{2})\s+(?P<valuedate>\d{2}\.\d{2}\.\d{2})\s+(?P<amount>[-+]?\d[\d\s]*[.,]\d{2})(?P<desc>.+)"
     )
 
     transactions = []
@@ -57,7 +57,7 @@ def parse_pdf(file_path):
                 "ValueDate": "20" + match.group("valuedate"),
                 "Amount": amount,
                 "Type": "Credit" if amount >= 0 else "Debit",
-                "Description": match.group("desc")
+                "Description": match.group("desc").strip()
             })
 
     for line in lines:
