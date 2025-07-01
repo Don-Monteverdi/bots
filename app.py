@@ -17,6 +17,15 @@ def is_amount(val):
     return re.match(r"[-+]?\d[\d\s]*[.,]?\d*", val)
 
 def normalize_amount(val):
+    val = val.strip().replace(" ", "")
+    if "," in val:
+        val = val.replace(".", "").replace(",", ".")
+    else:
+        val = val.replace(".", "")
+    try:
+        return float(val)
+    except:
+        return 0.0
     val = val.replace(" ", "").replace(",", ".")
     try:
         return float(val)
